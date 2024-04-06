@@ -1,0 +1,13 @@
+version: '1.0'
+
+services:
+  rag-app:
+    env_file: 
+      - .env
+    build: 
+      context: .
+      dockerfile: dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - '/app:/usr/src/app'
