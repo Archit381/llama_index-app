@@ -6,6 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import shutil
 from llama_index.core.memory import ChatMemoryBuffer
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core import Settings
+from llama_index.llms.huggingface_api import HuggingFaceInferenceAPI
 
 app = FastAPI()
 
@@ -22,13 +25,20 @@ load_dotenv()
 index = None
 user_index = None
 
+embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+Settings.embed_model = embed_model
+
+llm = HuggingFaceInferenceAPI(
+    model_name="HuggingFaceH4/zephyr-7b-alpha", token=os.getenv('HF_API')
+)
+
 
 def initialzie_index():
     global index
     if (os.path.exists('index_storage')):
         storage_context = StorageContext.from_defaults(
             persist_dir='index_storage')
-        index = load_index_from_storage(storage_context)
+        index = load_index_from_storage(storage_context, embed_model=embed_model)
 
     else:
         documents = SimpleDirectoryReader('./documents').load_data()
@@ -38,7 +48,6 @@ def initialzie_index():
 
 
 initialzie_index()
-
 
 def createIndex():
     global user_index
@@ -55,7 +64,7 @@ def query_index(search_query: str):
     if (search_query is None):
         return {"Result": "Search Query is Empty"}
 
-    query_engine = index.as_query_engine()
+    query_engine = index.as_query_engine(llm=llm)
     response = query_engine.query(search_query)
 
     return {"Result": response}
@@ -86,7 +95,7 @@ def query_userdata(search_query: str):
     if (search_query is None):
         return {"Result": "Search Query is Empty"}
 
-    query_engine = user_index.as_query_engine()
+    query_engine = user_index.as_query_engine(llm=llm)
     response = query_engine.query(search_query)
 
     return {"Result": response}
@@ -102,6 +111,7 @@ def chatbot_query(user_query: str):
     memory = ChatMemoryBuffer.from_defaults(token_limit=5000)
 
     chat_engine = index.as_chat_engine(
+        llm=llm,
         chat_mode="context",
         memory=memory,
         system_prompt=(
